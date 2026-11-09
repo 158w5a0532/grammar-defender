@@ -2,48 +2,105 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>Grammar Defender: Linie 1 Arcade Odyssey</title>
+  <title>Grammar Defender: Linie 1 Arcade</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#0a0c18">
+  <meta name="theme-color" content="#070913">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="game-container">
+  <div id="game-app">
+    <!-- Fullscreen Combat Canvas -->
     <canvas id="gameCanvas"></canvas>
 
-    <!-- Virtual On-Screen Controls for Mobile & Tablet -->
+    <!-- Native Mobile Level Selection Overlay (59 Levels) -->
+    <div id="screen-level-select" class="ui-screen">
+      <header class="select-header">
+        <div class="brand-row">
+          <span class="badge-stage">STAGE A1</span>
+          <h1>GRAMMAR DEFENDER</h1>
+          <span class="badge-count" id="unlocked-counter">59 SECTORS</span>
+        </div>
+        <p class="sub-headline">Linie 1: Offizieller Grammatik-Katalog</p>
+        
+        <!-- Chapter Filter Chips -->
+        <nav class="chapter-chips" id="chapter-filter">
+          <button class="chip active" data-filter="all">ALLE (59)</button>
+          <button class="chip" data-filter="K1-K4">K1–K4</button>
+          <button class="chip" data-filter="K5-K8">K5–K8</button>
+          <button class="chip" data-filter="K9-K12">K9–K12</button>
+          <button class="chip" data-filter="K13-K16">K13–K16</button>
+        </nav>
+      </header>
+
+      <!-- Smooth 120Hz Touch Scroll Container -->
+      <main class="level-card-list" id="level-list-container">
+        <!-- Rendered dynamically by engine.js -->
+      </main>
+    </div>
+
+    <!-- On-Screen Combat Touch Controls -->
     <div id="touch-controls" class="hidden">
-      <div id="touch-track-zone">
-        <span class="touch-hint">SLIDE TO STEER DEFENDER</span>
+      <div id="touch-steer-zone">
+        <span class="touch-steer-label">◀ SLIDE TO STEER ▶</span>
       </div>
-      <div class="touch-btn-cluster">
-        <button id="btn-codex" class="touch-btn">CODEX</button>
-        <button id="btn-fire" class="touch-btn fire-pulse">FIRE</button>
+      <div class="touch-actions">
+        <button id="btn-codex" class="control-btn" type="button">CODEX</button>
+        <button id="btn-fire" class="control-btn fire-glow" type="button">FIRE</button>
       </div>
     </div>
 
-    <!-- In-Game Grammatik-Codex Modal Overlay -->
+    <!-- In-Game Grammatik-Codex Sheet -->
     <div id="codex-modal" class="modal-overlay hidden">
-      <div class="modal-box">
-        <div class="modal-header">
-          <span id="codex-level-tag">LEVEL 1.22</span>
-          <h2 id="codex-title">Akkusativ-Regeln</h2>
-          <button id="codex-close" class="close-x">&times;</button>
+      <div class="modal-content">
+        <div class="modal-bar">
+          <span id="codex-level-tag">LVL 1.01</span>
+          <h2 id="codex-title">Thema</h2>
+          <button id="codex-close" class="close-btn" type="button">&times;</button>
         </div>
         <div class="modal-body">
-          <div id="codex-rule-box"></div>
-          <div id="codex-example-box"></div>
+          <div class="codex-section">
+            <label>GRAMMATIK-REGEL</label>
+            <p id="codex-rule-box"></p>
+          </div>
+          <div class="codex-section">
+            <label>BEISPIEL AUS LINIE 1</label>
+            <p id="codex-example-box"></p>
+          </div>
         </div>
-        <div class="modal-footer">
-          <button id="btn-resume-mission" class="arcade-action-btn">RESUME MISSION</button>
+        <button id="btn-resume" class="btn-primary" type="button">ZURÜCK ZUR MISSION</button>
+      </div>
+    </div>
+
+    <!-- Victory / Mission Clear Screen -->
+    <div id="screen-victory" class="result-modal hidden">
+      <div class="result-card">
+        <div class="stars-earned" id="victory-stars">★★★</div>
+        <h2 id="victory-title">SEKTOR BEREINIGT!</h2>
+        <p class="score-display" id="victory-score">SCORE: 12,500</p>
+        <p class="rule-recap" id="victory-rule-desc"></p>
+        <div class="result-actions">
+          <button id="btn-next-level" class="btn-primary" type="button">NÄCHSTER SEKTOR</button>
+          <button id="btn-select-map" class="btn-secondary" type="button">SEKTOR-KARTE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over / Shield Breach Screen -->
+    <div id="screen-gameover" class="result-modal hidden">
+      <div class="result-card danger">
+        <h2 class="alert-text">SCHILDE KOLLABIERT</h2>
+        <p class="sub-alert">Die Grammatik-Barriere wurde durchbrochen.</p>
+        <p class="hint-display" id="gameover-hint"></p>
+        <div class="result-actions">
+          <button id="btn-retry" class="btn-primary alert-btn" type="button">NEUSTART</button>
+          <button id="btn-fail-map" class="btn-secondary" type="button">SEKTOR-KARTE</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Load Stage Datasets then Main Game Engine -->
   <script src="data_a1.js"></script>
   <script src="engine.js"></script>
 </body>
