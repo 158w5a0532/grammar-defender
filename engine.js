@@ -1,6 +1,9 @@
 /**
- * GRAMMAR DEFENDER ENGINE (Stage A1 + A2 Master Engine)
- * Fixed Chapter Regex & Stage Switcher
+ * GRAMMAR DEFENDER ENGINE - V2.5
+ * - Cyber Drone Visuals (Angular Hexagon Space Pods with Thrusters)
+ * - Anti-Overlap Drone Spacing & Staggered Altitude
+ * - Rock-Solid Chapter Filtering (Based on Level ID range)
+ * - Instant Stage A1 / A2 Switching
  */
 
 class RetroAudioEngine {
@@ -117,6 +120,7 @@ class GameApp {
     this.score = 0;
     this.streak = 0;
     this.mistakesCount = 0;
+    this.timeCounter = 0;
 
     this.toast = { text: '', color: '#fff', timer: 0 };
     this.touchSlideActive = false;
@@ -137,10 +141,14 @@ class GameApp {
   }
 
   getActiveStageDataset() {
-    if (this.currentStageKey === 'A2' && window.STAGE_A2_DATA && window.STAGE_A2_DATA.levels) {
-      return window.STAGE_A2_DATA;
+    if (this.currentStageKey === 'A2') {
+      return (window.STAGE_A2_DATA && window.STAGE_A2_DATA.levels && window.STAGE_A2_DATA.levels.length > 0)
+        ? window.STAGE_A2_DATA
+        : { stage: 'A2', levels: [] };
     }
-    return window.STAGE_A1_DATA || { levels: [] };
+    return (window.STAGE_A1_DATA && window.STAGE_A1_DATA.levels)
+      ? window.STAGE_A1_DATA
+      : { stage: 'A1', levels: [] };
   }
 
   handleResize() {
@@ -189,15 +197,17 @@ class GameApp {
         const lvl = stageData.levels[session.levelIdx];
         const banner = document.getElementById('resume-banner');
         const text = document.getElementById('resume-text');
-        text.innerText = `[${session.stageKey}] ${lvl.id} • FRAGE ${session.questionIdx + 1}`;
-        banner.classList.remove('hidden');
+        if (text && banner) {
+          text.innerText = `[${session.stageKey}] ${lvl.id} • FRAGE ${session.questionIdx + 1}`;
+          banner.classList.remove('hidden');
 
-        document.getElementById('btn-resume-session').onclick = () => {
-          this.audio.init();
-          this.currentStageKey = session.stageKey;
-          this.updateStageButtonState();
-          this.startLevel(session.levelIdx, session.questionIdx);
-        };
+          document.getElementById('btn-resume-session').onclick = () => {
+            this.audio.init();
+            this.currentStageKey = session.stageKey;
+            this.updateStageButtonState();
+            this.startLevel(session.levelIdx, session.questionIdx);
+          };
+        }
       }
     } catch (e) {
       console.warn('Could not restore session', e);
@@ -223,24 +233,35 @@ class GameApp {
     }
   }
 
+  // --- BULLETPROOF CHAPTER FILTERING ---
+  // Uses exact Level IDs (e.g., LVL 1.01 - LVL 1.16 is K1-K4)
   renderLevelCards(filter = 'all') {
     this.currentFilter = filter;
     const container = document.getElementById('level-list-container');
+    if (!container) return;
     container.innerHTML = '';
+
     const stageData = this.getActiveStageDataset();
     const levels = stageData.levels || [];
     const saved = this.loadProgress();
 
     levels.forEach((lvl, idx) => {
       if (filter !== 'all') {
-        // Robust regex: capture digits directly following 'K'
-        const match = lvl.chapter.match(/K(\d+)/i);
-        const chapNum = match ? parseInt(match[1], 10) : 0;
-
-        if (filter === 'K1-K4' && (chapNum < 1 || chapNum > 4)) return;
-        if (filter === 'K5-K8' && (chapNum < 5 || chapNum > 8)) return;
-        if (filter === 'K9-K12' && (chapNum < 9 || chapNum > 12)) return;
-        if (filter === 'K13-K16' && (chapNum < 13 || chapNum > 16)) return;
+        const idNum = parseFloat(lvl.id.replace(/[^\d.]/g, ''));
+        
+        if (this.currentStageKey === 'A1') {
+          // A1: 1.01-1.16 (K1-K4), 1.17-1.34 (K5-K8), 1.35-1.48 (K9-K12), 1.49-1.59 (K13-K16)
+          if (filter === 'K1-K4' && (idNum < 1.01 || idNum > 1.165)) return;
+          if (filter === 'K5-K8' && (idNum < 1.169 || idNum > 1.345)) return;
+          if (filter === 'K9-K12' && (idNum < 1.349 || idNum > 1.485)) return;
+          if (filter === 'K13-K16' && (idNum < 1.489 || idNum > 1.595)) return;
+        } else {
+          // A2: 2.01-2.11 (K1-K4), 2.12-2.22 (K5-K8), 2.23-2.33 (K9-K12), 2.34-2.43 (K13-K16)
+          if (filter === 'K1-K4' && (idNum < 2.01 || idNum > 2.115)) return;
+          if (filter === 'K5-K8' && (idNum < 2.119 || idNum > 2.225)) return;
+          if (filter === 'K9-K12' && (idNum < 2.229 || idNum > 2.335)) return;
+          if (filter === 'K13-K16' && (idNum < 2.339 || idNum > 2.435)) return;
+        }
       }
 
       const stars = saved[idx] || 0;
@@ -293,7 +314,7 @@ class GameApp {
 
       btnA2.addEventListener('click', () => {
         if (!window.STAGE_A2_DATA || !window.STAGE_A2_DATA.levels || window.STAGE_A2_DATA.levels.length === 0) {
-          alert('Stage A2 Datenpakete werden noch geladen.');
+          alert('Stage A2 lädt... Bitte sicherstellen, dass die A2-Dateien geladen wurden.');
           return;
         }
         this.currentStageKey = 'A2';
@@ -469,6 +490,7 @@ class GameApp {
     this.renderLevelCards(this.currentFilter);
   }
 
+  // --- SPACED & STAGGERED CYBER PODS ---
   spawnNextWave() {
     this.drones = [];
     this.lasers = [];
@@ -488,18 +510,30 @@ class GameApp {
     this.currentQuestion = this.activeQueue[0];
     const opts = this.shuffle([...this.currentQuestion.options]);
     const numOpts = opts.length;
-    const spacing = this.width / (numOpts + 1);
+
+    // Generous horizontal padding so pods never touch screen borders
+    const sideMargin = 36;
+    const availableWidth = this.width - (sideMargin * 2);
+    const spacing = availableWidth / (numOpts - 1 || 1);
+
+    // Compute dynamic width per drone to keep 12-16px clear gap between pods
+    const droneWidth = Math.min(88, Math.max(68, (availableWidth / numOpts) - 14));
+    const droneHeight = 44;
 
     opts.forEach((opt, i) => {
+      // Stagger vertical height (V-formation / W-formation) to ensure zero horizontal crowding
+      const yOffset = (i % 2 === 0) ? 0 : 42;
+
       this.drones.push({
-        x: spacing * (i + 1),
-        y: 125 + (i % 2) * 25,
+        x: (numOpts === 1) ? this.width / 2 : sideMargin + (spacing * i),
+        y: 125 + yOffset,
         text: opt,
         isCorrect: (opt === this.currentQuestion.correct),
         rule: this.currentQuestion.rule,
-        speed: 1.05,
-        width: Math.min(84, this.width / (numOpts + 0.8)),
-        height: 38
+        speed: 0.95,
+        width: droneWidth,
+        height: droneHeight,
+        pulseOffset: Math.random() * Math.PI
       });
     });
   }
@@ -570,6 +604,7 @@ class GameApp {
   }
 
   loop() {
+    this.timeCounter += 0.05;
     this.update();
     this.render();
     requestAnimationFrame(() => this.loop());
@@ -624,6 +659,61 @@ class GameApp {
     });
   }
 
+  // --- RENDER CYBER POD / SPACE DRONE SHAPES ---
+  drawCyberDrone(ctx, d) {
+    const w = d.width;
+    const h = d.height;
+    const cut = 8; // Chamfered corner cut
+
+    ctx.save();
+    ctx.translate(d.x, d.y);
+
+    // Glowing thruster plume under the drone
+    const thrusterHeight = 6 + Math.sin(this.timeCounter * 4 + d.pulseOffset) * 3;
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.45)';
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.22, h / 2);
+    ctx.lineTo(0, h / 2 + thrusterHeight);
+    ctx.lineTo(w * 0.22, h / 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Drone Body (Angular Octagonal / Chamfered Cyber Pod)
+    ctx.beginPath();
+    ctx.moveTo(-w / 2 + cut, -h / 2);
+    ctx.lineTo(w / 2 - cut, -h / 2);
+    ctx.lineTo(w / 2, -h / 2 + cut);
+    ctx.lineTo(w / 2, h / 2 - cut);
+    ctx.lineTo(w / 2 - cut, h / 2);
+    ctx.lineTo(-w / 2 + cut, h / 2);
+    ctx.lineTo(-w / 2, h / 2 - cut);
+    ctx.lineTo(-w / 2, -h / 2 + cut);
+    ctx.closePath();
+
+    ctx.fillStyle = 'rgba(12, 18, 36, 0.94)';
+    ctx.fill();
+
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // Side armor detail accents
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-w / 2 + cut + 2, -h / 2 + 3);
+    ctx.lineTo(w / 2 - cut - 2, -h / 2 + 3);
+    ctx.stroke();
+
+    // Drone Text
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(d.text, 0, 5);
+
+    ctx.restore();
+  }
+
   render() {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.width, this.height);
@@ -640,34 +730,24 @@ class GameApp {
 
     if (this.state !== this.STATE_PLAYING) return;
 
+    // Mission Clause
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 16px -apple-system, monospace';
+    ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", monospace';
     ctx.fillText(this.currentQuestion.sentence, this.width / 2, 88);
 
+    // Draw Cyber Drones
     this.drones.forEach(d => {
-      ctx.fillStyle = 'rgba(17, 24, 39, 0.9)';
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 1.5;
-
-      const r = 8;
-      const x = d.x - d.width / 2;
-      const y = d.y - d.height / 2;
-      ctx.beginPath();
-      ctx.roundRect(x, y, d.width, d.height, r);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 14px -apple-system, monospace';
-      ctx.fillText(d.text, d.x, d.y + 5);
+      this.drawCyberDrone(ctx, d);
     });
 
+    // Lasers
     ctx.fillStyle = '#38bdf8';
     this.lasers.forEach(l => {
       ctx.fillRect(l.x - 2, l.y, 4, 14);
     });
 
+    // Defender Ship
     ctx.fillStyle = '#38bdf8';
     ctx.beginPath();
     ctx.moveTo(this.ship.x, this.ship.y - 18);
@@ -679,7 +759,7 @@ class GameApp {
 
     if (this.toast.timer > 0) {
       ctx.fillStyle = this.toast.color;
-      ctx.font = 'bold 13px -apple-system, monospace';
+      ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, monospace';
       ctx.fillText(this.toast.text, this.width / 2, this.height - 145);
     }
   }
