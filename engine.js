@@ -1,9 +1,8 @@
 /**
- * GRAMMAR DEFENDER ENGINE (Mobile-First Architecture)
- * Fullscreen Dynamic Retina Canvas + Native HTML 120Hz Touch Selection.
+ * GRAMMAR DEFENDER ENGINE (Stage A1 + A2 Master Engine)
+ * Responsive 60 FPS Retina Canvas + 120Hz Touch Navigation + Adaptive Queue.
  */
 
-// --- 1. WEB AUDIO SYNTHESIZER ---
 class RetroAudioEngine {
   constructor() {
     this.ctx = null;
@@ -86,47 +85,39 @@ class RetroAudioEngine {
   }
 }
 
-// --- 2. MAIN GAME APPLICATION ---
 class GameApp {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
     this.ctx = this.canvas.getContext('2d');
     this.audio = new RetroAudioEngine();
 
-    // Responsive Canvas Dimensions
     this.width = window.innerWidth;
     this.height = window.innerHeight;
     this.dpr = window.devicePixelRatio || 1;
 
-    // Entities & Combat
     this.ship = { x: this.width / 2, y: this.height - 130, vx: 0, speed: 7.5 };
     this.lasers = [];
     this.drones = [];
     this.particles = [];
     this.stars = [];
 
-    // State Machine
     this.STATE_SELECT = 'SELECT';
     this.STATE_PLAYING = 'PLAYING';
     this.state = this.STATE_SELECT;
 
-    // Level & Adaptive Queue
     this.currentStageKey = 'A1';
     this.currentLevelIndex = 0;
+    this.currentQuestionIndex = 0;
     this.activeLevelData = null;
     this.activeQueue = [];
-    this.activeSeedPool = [];
     this.currentQuestion = null;
-    this.completedCount = 0;
+
     this.shield = 100;
     this.score = 0;
     this.streak = 0;
     this.mistakesCount = 0;
 
-    // Toast Diagnostics
     this.toast = { text: '', color: '#fff', timer: 0 };
-
-    // Touch Drag Tracking
     this.touchSlideActive = false;
     this.touchStartX = 0;
     this.shipStartX = 0;
@@ -137,10 +128,14 @@ class GameApp {
 
     this.setupUI();
     this.setupEventListeners();
+    this.checkResumeSession();
     this.renderLevelCards('all');
 
-    // Start 60 FPS Engine
     requestAnimationFrame(() => this.loop());
+  }
+
+  getActiveStageDataset() {
+    return (this.currentStageKey === 'A2') ? window.STAGE_A2_DATA : window.STAGE_A1_DATA;
   }
 
   handleResize() {
@@ -170,15 +165,62 @@ class GameApp {
     }
   }
 
-  // --- 3. DOM LEVEL SELECT & FILTERS ---
+  saveCurrentPosition() {
+    const session = {
+      stageKey: this.currentStageKey,
+      levelIdx: this.currentLevelIndex,
+      questionIdx: this.currentQuestionIndex
+    };
+    localStorage.setItem('grammar_last_session', JSON.stringify(session));
+  }
+
+  checkResumeSession() {
+    const raw = localStorage.getItem('grammar_last_session');
+    if (!raw) return;
+    try {
+      const session = JSON.parse(raw);
+      const stageData = (session.stageKey === 'A2') ? window.STAGE_A2_DATA : window.STAGE_A1_DATA;
+      if (stageData && stageData.levels[session.levelIdx]) {
+        const lvl = stageData.levels[session.levelIdx];
+        const banner = document.getElementById('resume-banner');
+        const text = document.getElementById('resume-text');
+        text.innerText = `[${session.stageKey}] ${lvl.id} • FRAGE ${session.questionIdx + 1}`;
+        banner.classList.remove('hidden');
+
+        document.getElementById('btn-resume-session').onclick = () => {
+          this.audio.init();
+          this.currentStageKey = session.stageKey;
+          this.updateStageButtonState();
+          this.startLevel(session.levelIdx, session.questionIdx);
+        };
+      }
+    } catch (e) {
+      console.warn('Could not restore session', e);
+    }
+  }
+
+  updateStageButtonState() {
+    const btnA1 = document.getElementById('btn-stage-a1');
+    const btnA2 = document.getElementById('btn-stage-a2');
+    if (this.currentStageKey === 'A2') {
+      btnA2.classList.add('active');
+      btnA1.classList.remove('active');
+    } else {
+      btnA1.classList.add('active');
+      btnA2.classList.remove('active');
+    }
+    const stageData = this.getActiveStageDataset();
+    document.getElementById('unlocked-counter').innerText = `${stageData.levels.length} SECTORS`;
+  }
+
   renderLevelCards(filter) {
     const container = document.getElementById('level-list-container');
     container.innerHTML = '';
-    const levels = window.STAGE_A1_DATA.levels;
+    const stageData = this.getActiveStageDataset();
+    const levels = stageData.levels;
     const saved = this.loadProgress();
 
     levels.forEach((lvl, idx) => {
-      // Chapter range filter
       if (filter !== 'all') {
         const chapNum = parseInt(lvl.chapter.replace(/\D/g, ''), 10);
         if (filter === 'K1-K4' && (chapNum < 1 || chapNum > 4)) return;
@@ -208,7 +250,7 @@ class GameApp {
 
       card.addEventListener('click', () => {
         this.audio.init();
-        this.startLevel(idx);
+        this.startLevel(idx, 0);
       });
 
       container.appendChild(card);
@@ -216,7 +258,48 @@ class GameApp {
   }
 
   setupUI() {
-    // Filter Chips
+    // Stage A1 / A2 Toggle Switcher
+    const btnA1 = document.getElementById('btn-stage-a1');
+    const btnA2 = document.getElementById('btn-stage-a2');
+
+    btnA1.addEventListener('click', () => {
+      this.currentStageKey = 'A1';
+      this.updateStageButtonState();
+      this.renderLevelCards('all');
+    });
+
+    btnA2.addEventListener('click', () => {
+      if (!window.STAGE_A2_DATA || window.STAGE_A2_DATA.levels.length === 0) {
+        this.showToast('Stage A2 lädt...', '#facc15', 60);
+        return;
+      }
+      this.currentStageKey = 'A2';
+      this.updateStageButtonState();
+      this.renderLevelCards('all');
+    });
+
+    // Jump Input Execution
+    const executeJump = () => {
+      const input = document.getElementById('jump-q-input');
+      const val = parseInt(input.value, 10);
+      const total = this.activeLevelData.questions.length;
+      if (!isNaN(val) && val >= 1 && val <= total) {
+        this.jumpToQuestion(val - 1);
+        input.blur();
+      } else {
+        this.showToast(`Bitte 1 bis ${total} eingeben`, '#facc15', 80);
+      }
+    };
+
+    document.getElementById('btn-jump-q').addEventListener('click', executeJump);
+    document.getElementById('jump-q-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') executeJump();
+    });
+
+    document.getElementById('btn-back-to-menu').addEventListener('click', () => {
+      this.openLevelSelect();
+    });
+
     const chips = document.querySelectorAll('.chapter-chips .chip');
     chips.forEach(chip => {
       chip.addEventListener('click', () => {
@@ -226,15 +309,15 @@ class GameApp {
       });
     });
 
-    // Modal Action Buttons
     document.getElementById('btn-resume').addEventListener('click', () => this.toggleCodex(false));
     document.getElementById('codex-close').addEventListener('click', () => this.toggleCodex(false));
     document.getElementById('btn-codex').addEventListener('click', () => this.toggleCodex(true));
 
     document.getElementById('btn-next-level').addEventListener('click', () => {
       document.getElementById('screen-victory').classList.add('hidden');
-      if (this.currentLevelIndex + 1 < window.STAGE_A1_DATA.levels.length) {
-        this.startLevel(this.currentLevelIndex + 1);
+      const stageData = this.getActiveStageDataset();
+      if (this.currentLevelIndex + 1 < stageData.levels.length) {
+        this.startLevel(this.currentLevelIndex + 1, 0);
       } else {
         this.openLevelSelect();
       }
@@ -247,7 +330,7 @@ class GameApp {
 
     document.getElementById('btn-retry').addEventListener('click', () => {
       document.getElementById('screen-gameover').classList.add('hidden');
-      this.startLevel(this.currentLevelIndex);
+      this.startLevel(this.currentLevelIndex, 0);
     });
 
     document.getElementById('btn-fail-map').addEventListener('click', () => {
@@ -257,12 +340,13 @@ class GameApp {
   }
 
   setupEventListeners() {
-    // Keyboard Controls
     window.addEventListener('keydown', (e) => {
       this.audio.init();
       if (e.key === ' ' && this.state === this.STATE_PLAYING) {
-        this.fireLaser();
-        e.preventDefault();
+        if (document.activeElement.tagName !== 'INPUT') {
+          this.fireLaser();
+          e.preventDefault();
+        }
       }
       if (e.key === 'ArrowLeft' || e.key === 'a') this.ship.vx = -this.ship.speed;
       if (e.key === 'ArrowRight' || e.key === 'd') this.ship.vx = this.ship.speed;
@@ -272,7 +356,6 @@ class GameApp {
       if (['ArrowLeft', 'ArrowRight', 'a', 'd'].includes(e.key)) this.ship.vx = 0;
     });
 
-    // Touch Steer Slider
     const track = document.getElementById('touch-steer-zone');
     track.addEventListener('touchstart', (e) => {
       this.audio.init();
@@ -293,14 +376,12 @@ class GameApp {
       this.touchSlideActive = false;
     });
 
-    // Touch Fire Button
     document.getElementById('btn-fire').addEventListener('touchstart', (e) => {
       this.audio.init();
       if (this.state === this.STATE_PLAYING) this.fireLaser();
       e.preventDefault();
     });
 
-    // Direct Tap-to-Target on Drone (Mobile Screen Tap)
     this.canvas.addEventListener('pointerdown', (e) => {
       this.audio.init();
       if (this.state !== this.STATE_PLAYING) return;
@@ -317,16 +398,14 @@ class GameApp {
     });
   }
 
-  // --- 4. COMBAT & ADAPTIVE QUEUE LOGIC ---
-  startLevel(idx) {
+  startLevel(idx, startQuestionIndex = 0) {
     this.currentLevelIndex = idx;
-    this.activeLevelData = window.STAGE_A1_DATA.levels[idx];
+    const stageData = this.getActiveStageDataset();
+    this.activeLevelData = stageData.levels[idx];
+    this.currentQuestionIndex = startQuestionIndex;
 
-    // Seed pool clone & initial 20 draw
-    this.activeSeedPool = this.shuffle([...this.activeLevelData.questions]);
-    this.activeQueue = this.activeSeedPool.splice(0, Math.min(20, this.activeSeedPool.length));
+    this.activeQueue = this.activeLevelData.questions.slice(startQuestionIndex);
 
-    this.completedCount = 0;
     this.shield = 100;
     this.score = 0;
     this.streak = 0;
@@ -338,15 +417,31 @@ class GameApp {
 
     document.getElementById('screen-level-select').classList.add('hidden');
     document.getElementById('touch-controls').classList.remove('hidden');
-    this.state = this.STATE_PLAYING;
+    document.getElementById('combat-hud-overlay').classList.remove('hidden');
 
+    document.getElementById('hud-level-tag').innerText = `[${this.currentStageKey}] ${this.activeLevelData.id}`;
+    document.getElementById('jump-total-label').innerText = `/ ${this.activeLevelData.questions.length}`;
+
+    this.state = this.STATE_PLAYING;
+    this.spawnNextWave();
+  }
+
+  jumpToQuestion(qIndex) {
+    this.currentQuestionIndex = qIndex;
+    this.activeQueue = this.activeLevelData.questions.slice(qIndex);
+    this.lasers = [];
+    this.drones = [];
+    this.showToast(`GESPRUNGEN ZU FRAGE ${qIndex + 1}`, '#38bdf8', 60);
     this.spawnNextWave();
   }
 
   openLevelSelect() {
     this.state = this.STATE_SELECT;
     document.getElementById('touch-controls').classList.add('hidden');
+    document.getElementById('combat-hud-overlay').classList.add('hidden');
     document.getElementById('screen-level-select').classList.remove('hidden');
+    this.checkResumeSession();
+    this.updateStageButtonState();
     this.renderLevelCards('all');
   }
 
@@ -359,6 +454,13 @@ class GameApp {
       return;
     }
 
+    const jumpInput = document.getElementById('jump-q-input');
+    if (document.activeElement !== jumpInput) {
+      jumpInput.value = this.currentQuestionIndex + 1;
+    }
+
+    this.saveCurrentPosition();
+
     this.currentQuestion = this.activeQueue[0];
     const opts = this.shuffle([...this.currentQuestion.options]);
     const numOpts = opts.length;
@@ -367,11 +469,10 @@ class GameApp {
     opts.forEach((opt, i) => {
       this.drones.push({
         x: spacing * (i + 1),
-        y: 110 + (i % 2) * 25,
+        y: 125 + (i % 2) * 25,
         text: opt,
         isCorrect: (opt === this.currentQuestion.correct),
         rule: this.currentQuestion.rule,
-        tag: this.currentQuestion.tag,
         speed: 1.05,
         width: Math.min(84, this.width / (numOpts + 0.8)),
         height: 38
@@ -394,8 +495,10 @@ class GameApp {
       this.triggerExplosion(drone.x, drone.y, '#22c55e', 24);
       this.streak++;
       this.score += 100 * Math.min(this.streak, 5);
-      this.completedCount++;
+      document.getElementById('hud-score').innerText = `${this.score} PTS`;
+
       this.activeQueue.shift();
+      this.currentQuestionIndex++;
 
       this.showToast('RICHTIG! KOMBO x' + this.streak, '#22c55e', 45);
       setTimeout(() => this.spawnNextWave(), 380);
@@ -407,15 +510,6 @@ class GameApp {
       this.mistakesCount++;
 
       this.showToast(drone.rule, '#facc15', 130);
-
-      // Adaptive Dynamic Re-queue
-      let reinforcement = this.activeSeedPool.find(q => q.tag === drone.tag);
-      if (!reinforcement && this.activeSeedPool.length > 0) {
-        reinforcement = this.activeSeedPool.pop();
-      }
-      if (reinforcement) {
-        this.activeQueue.push(reinforcement);
-      }
 
       if (this.shield <= 0) {
         this.handleLevelFail();
@@ -429,6 +523,7 @@ class GameApp {
     this.audio.playStageClear();
     this.state = this.STATE_SELECT;
     document.getElementById('touch-controls').classList.add('hidden');
+    document.getElementById('combat-hud-overlay').classList.add('hidden');
 
     let stars = 1;
     if (this.mistakesCount === 0 && this.shield === 100) stars = 3;
@@ -445,11 +540,11 @@ class GameApp {
   handleLevelFail() {
     this.state = this.STATE_SELECT;
     document.getElementById('touch-controls').classList.add('hidden');
-    document.getElementById('gameover-hint').innerText = `Regel-Tipp: ${this.activeLevelData.ruleSummary}`;
+    document.getElementById('combat-hud-overlay').classList.add('hidden');
+    document.getElementById('gameover-hint').innerText = `Tipp: ${this.activeLevelData.ruleSummary}`;
     document.getElementById('screen-gameover').classList.remove('hidden');
   }
 
-  // --- 5. RENDER & SIMULATION LOOP ---
   loop() {
     this.update();
     this.render();
@@ -457,7 +552,6 @@ class GameApp {
   }
 
   update() {
-    // Parallax Starfield
     this.stars.forEach(s => {
       s.y += s.speed;
       if (s.y > this.height) {
@@ -466,7 +560,6 @@ class GameApp {
       }
     });
 
-    // Particle FX
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.x += p.vx;
@@ -479,11 +572,9 @@ class GameApp {
 
     if (this.state !== this.STATE_PLAYING) return;
 
-    // Ship Keyboard Movement
     this.ship.x += this.ship.vx;
     this.ship.x = Math.max(30, Math.min(this.width - 30, this.ship.x));
 
-    // Lasers
     for (let i = this.lasers.length - 1; i >= 0; i--) {
       const l = this.lasers[i];
       l.y -= l.speed;
@@ -497,10 +588,9 @@ class GameApp {
         }
       }
 
-      if (l.y < 70) this.lasers.splice(i, 1);
+      if (l.y < 85) this.lasers.splice(i, 1);
     }
 
-    // Drones Fall
     this.drones.forEach(d => {
       d.y += d.speed;
       if (d.y > this.height - 140) {
@@ -514,13 +604,11 @@ class GameApp {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.width, this.height);
 
-    // Stars
     ctx.fillStyle = '#64748b';
     this.stars.forEach(s => {
       ctx.fillRect(s.x, s.y, s.size, s.size);
     });
 
-    // Particles
     this.particles.forEach(p => {
       ctx.fillStyle = p.color;
       ctx.fillRect(p.x, p.y, p.size, p.size);
@@ -528,35 +616,11 @@ class GameApp {
 
     if (this.state !== this.STATE_PLAYING) return;
 
-    // --- HUD HEADER ---
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-    ctx.fillRect(0, 0, this.width, 92);
-    ctx.strokeStyle = '#1e293b';
-    ctx.beginPath();
-    ctx.moveTo(0, 92);
-    ctx.lineTo(this.width, 92);
-    ctx.stroke();
-
-    // Level Tag & Streak
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 12px -apple-system, monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(`${this.activeLevelData.id} • ${this.activeLevelData.chapter}`, 16, 24);
-
-    ctx.fillStyle = '#facc15';
-    ctx.fillText(`KOMBO x${this.streak} 🔥  ${this.score} PTS`, 16, 42);
-
-    // Shield Bar
-    ctx.fillStyle = '#334155';
-    ctx.fillRect(this.width - 120, 18, 104, 10);
-    ctx.fillStyle = this.shield > 40 ? '#22c55e' : '#ef4444';
-    ctx.fillRect(this.width - 120, 18, (this.shield / 100) * 104, 10);
-
-    // Mission Sentence (Large & Centered)
+    // Mission Clause Banner
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 16px -apple-system, monospace';
-    ctx.fillText(this.currentQuestion.sentence, this.width / 2, 74);
+    ctx.fillText(this.currentQuestion.sentence, this.width / 2, 88);
 
     // Drones
     this.drones.forEach(d => {
@@ -604,7 +668,7 @@ class GameApp {
   toggleCodex(open) {
     const modal = document.getElementById('codex-modal');
     if (open && this.activeLevelData) {
-      document.getElementById('codex-level-tag').innerText = `${this.activeLevelData.id} • ${this.activeLevelData.chapter}`;
+      document.getElementById('codex-level-tag').innerText = `[${this.currentStageKey}] ${this.activeLevelData.id} • ${this.activeLevelData.chapter}`;
       document.getElementById('codex-title').innerText = this.activeLevelData.title;
       document.getElementById('codex-rule-box').innerText = this.activeLevelData.ruleSummary;
       document.getElementById('codex-example-box').innerText = this.activeLevelData.example;
@@ -636,14 +700,14 @@ class GameApp {
   }
 
   saveProgress(levelIdx, stars) {
-    const key = `grammar_odyssey_A1`;
+    const key = `grammar_odyssey_${this.currentStageKey}`;
     let data = JSON.parse(localStorage.getItem(key) || '{}');
     data[levelIdx] = Math.max(data[levelIdx] || 0, stars);
     localStorage.setItem(key, JSON.stringify(data));
   }
 
   loadProgress() {
-    return JSON.parse(localStorage.getItem(`grammar_odyssey_A1`) || '{}');
+    return JSON.parse(localStorage.getItem(`grammar_odyssey_${this.currentStageKey}`) || '{}');
   }
 
   shuffle(arr) {
