@@ -11,10 +11,10 @@
 </head>
 <body>
   <div id="game-app">
-    <!-- Fullscreen 60 FPS Combat Canvas -->
+    <!-- Fullscreen 60 FPS Canvas -->
     <canvas id="gameCanvas"></canvas>
 
-    <!-- In-Game Combat Top Navigation & Question Jump Overlay -->
+    <!-- In-Game Top Navigation & Jump Overlay -->
     <div id="combat-hud-overlay" class="combat-hud hidden">
       <div class="hud-left">
         <button id="btn-back-to-menu" class="hud-back-btn" type="button">◀ MAP</button>
@@ -34,11 +34,14 @@
       </div>
     </div>
 
-    <!-- Native Mobile Level Selection Screen -->
+    <!-- Level Selection Screen -->
     <div id="screen-level-select" class="ui-screen">
       <header class="select-header">
         <div class="brand-row">
-          <span class="badge-stage">STAGE A1</span>
+          <div class="stage-toggle-cluster">
+            <button id="btn-stage-a1" class="stage-btn active" type="button">A1</button>
+            <button id="btn-stage-a2" class="stage-btn" type="button">A2</button>
+          </div>
           <h1>GRAMMAR DEFENDER</h1>
           <span class="badge-count" id="unlocked-counter">59 SECTORS</span>
         </div>
@@ -55,7 +58,7 @@
         
         <!-- Chapter Filter Chips -->
         <nav class="chapter-chips" id="chapter-filter">
-          <button class="chip active" data-filter="all">ALLE (59)</button>
+          <button class="chip active" data-filter="all">ALLE</button>
           <button class="chip" data-filter="K1-K4">K1–K4</button>
           <button class="chip" data-filter="K5-K8">K5–K8</button>
           <button class="chip" data-filter="K9-K12">K9–K12</button>
@@ -69,7 +72,7 @@
       </main>
     </div>
 
-    <!-- Virtual On-Screen Combat Touch Controls -->
+    <!-- On-Screen Virtual Controls -->
     <div id="touch-controls" class="hidden">
       <div id="touch-steer-zone">
         <span class="touch-steer-label">◀ SLIDE TO STEER ▶</span>
@@ -80,7 +83,7 @@
       </div>
     </div>
 
-    <!-- In-Game Grammatik-Codex Cheat Sheet Modal -->
+    <!-- In-Game Grammatik-Codex Sheet -->
     <div id="codex-modal" class="modal-overlay hidden">
       <div class="modal-content">
         <div class="modal-bar">
@@ -102,7 +105,7 @@
       </div>
     </div>
 
-    <!-- Victory / Sector Clear Screen -->
+    <!-- Victory Screen -->
     <div id="screen-victory" class="result-modal hidden">
       <div class="result-card">
         <div class="stars-earned" id="victory-stars">★★★</div>
@@ -116,7 +119,7 @@
       </div>
     </div>
 
-    <!-- Game Over / Shield Breach Screen -->
+    <!-- Game Over Screen -->
     <div id="screen-gameover" class="result-modal hidden">
       <div class="result-card danger">
         <h2 class="alert-text">SCHILDE KOLLABIERT</h2>
@@ -130,9 +133,19 @@
     </div>
   </div>
 
-  <!-- Curriculum Data Packs in Sequence -->
+  <!-- Stage A1 Data Packs -->
   <script src="data_a1.js"></script>
   <script src="data_a1_k5_k8.js"></script>
+  <script src="data_a1_k9_k12.js"></script>
+  <script src="data_a1_k13_k16.js"></script>
+
+  <!-- Stage A2 Data Packs -->
+  <script src="data_a2_k1_k4.js"></script>
+  <script src="data_a2_k5_k8.js"></script>
+  <script src="data_a2_k9_k12.js"></script>
+  <script src="data_a2_k13_k16.js"></script>
+
+  <!-- Core Game Engine -->
   <script src="engine.js"></script>
 </body>
 </html>
