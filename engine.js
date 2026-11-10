@@ -1,6 +1,6 @@
 /**
  * GRAMMAR DEFENDER ENGINE (Stage A1 + A2 Master Engine)
- * Responsive 60 FPS Retina Canvas + 120Hz Touch Navigation + Adaptive Queue.
+ * Fixed Chapter Regex & Stage Switcher
  */
 
 class RetroAudioEngine {
@@ -106,6 +106,7 @@ class GameApp {
     this.state = this.STATE_SELECT;
 
     this.currentStageKey = 'A1';
+    this.currentFilter = 'all';
     this.currentLevelIndex = 0;
     this.currentQuestionIndex = 0;
     this.activeLevelData = null;
@@ -129,13 +130,17 @@ class GameApp {
     this.setupUI();
     this.setupEventListeners();
     this.checkResumeSession();
+    this.updateStageButtonState();
     this.renderLevelCards('all');
 
     requestAnimationFrame(() => this.loop());
   }
 
   getActiveStageDataset() {
-    return (this.currentStageKey === 'A2') ? window.STAGE_A2_DATA : window.STAGE_A1_DATA;
+    if (this.currentStageKey === 'A2' && window.STAGE_A2_DATA && window.STAGE_A2_DATA.levels) {
+      return window.STAGE_A2_DATA;
+    }
+    return window.STAGE_A1_DATA || { levels: [] };
   }
 
   handleResize() {
@@ -180,7 +185,7 @@ class GameApp {
     try {
       const session = JSON.parse(raw);
       const stageData = (session.stageKey === 'A2') ? window.STAGE_A2_DATA : window.STAGE_A1_DATA;
-      if (stageData && stageData.levels[session.levelIdx]) {
+      if (stageData && stageData.levels && stageData.levels[session.levelIdx]) {
         const lvl = stageData.levels[session.levelIdx];
         const banner = document.getElementById('resume-banner');
         const text = document.getElementById('resume-text');
@@ -202,27 +207,36 @@ class GameApp {
   updateStageButtonState() {
     const btnA1 = document.getElementById('btn-stage-a1');
     const btnA2 = document.getElementById('btn-stage-a2');
-    if (this.currentStageKey === 'A2') {
-      btnA2.classList.add('active');
-      btnA1.classList.remove('active');
-    } else {
-      btnA1.classList.add('active');
-      btnA2.classList.remove('active');
+    if (btnA1 && btnA2) {
+      if (this.currentStageKey === 'A2') {
+        btnA2.classList.add('active');
+        btnA1.classList.remove('active');
+      } else {
+        btnA1.classList.add('active');
+        btnA2.classList.remove('active');
+      }
     }
     const stageData = this.getActiveStageDataset();
-    document.getElementById('unlocked-counter').innerText = `${stageData.levels.length} SECTORS`;
+    const counter = document.getElementById('unlocked-counter');
+    if (counter) {
+      counter.innerText = `${stageData.levels.length} SECTORS`;
+    }
   }
 
-  renderLevelCards(filter) {
+  renderLevelCards(filter = 'all') {
+    this.currentFilter = filter;
     const container = document.getElementById('level-list-container');
     container.innerHTML = '';
     const stageData = this.getActiveStageDataset();
-    const levels = stageData.levels;
+    const levels = stageData.levels || [];
     const saved = this.loadProgress();
 
     levels.forEach((lvl, idx) => {
       if (filter !== 'all') {
-        const chapNum = parseInt(lvl.chapter.replace(/\D/g, ''), 10);
+        // Robust regex: capture digits directly following 'K'
+        const match = lvl.chapter.match(/K(\d+)/i);
+        const chapNum = match ? parseInt(match[1], 10) : 0;
+
         if (filter === 'K1-K4' && (chapNum < 1 || chapNum > 4)) return;
         if (filter === 'K5-K8' && (chapNum < 5 || chapNum > 8)) return;
         if (filter === 'K9-K12' && (chapNum < 9 || chapNum > 12)) return;
@@ -257,28 +271,38 @@ class GameApp {
     });
   }
 
+  resetChipsToAll() {
+    const chips = document.querySelectorAll('.chapter-chips .chip');
+    chips.forEach(c => {
+      if (c.dataset.filter === 'all') c.classList.add('active');
+      else c.classList.remove('active');
+    });
+  }
+
   setupUI() {
-    // Stage A1 / A2 Toggle Switcher
     const btnA1 = document.getElementById('btn-stage-a1');
     const btnA2 = document.getElementById('btn-stage-a2');
 
-    btnA1.addEventListener('click', () => {
-      this.currentStageKey = 'A1';
-      this.updateStageButtonState();
-      this.renderLevelCards('all');
-    });
+    if (btnA1 && btnA2) {
+      btnA1.addEventListener('click', () => {
+        this.currentStageKey = 'A1';
+        this.updateStageButtonState();
+        this.resetChipsToAll();
+        this.renderLevelCards('all');
+      });
 
-    btnA2.addEventListener('click', () => {
-      if (!window.STAGE_A2_DATA || window.STAGE_A2_DATA.levels.length === 0) {
-        this.showToast('Stage A2 lädt...', '#facc15', 60);
-        return;
-      }
-      this.currentStageKey = 'A2';
-      this.updateStageButtonState();
-      this.renderLevelCards('all');
-    });
+      btnA2.addEventListener('click', () => {
+        if (!window.STAGE_A2_DATA || !window.STAGE_A2_DATA.levels || window.STAGE_A2_DATA.levels.length === 0) {
+          alert('Stage A2 Datenpakete werden noch geladen.');
+          return;
+        }
+        this.currentStageKey = 'A2';
+        this.updateStageButtonState();
+        this.resetChipsToAll();
+        this.renderLevelCards('all');
+      });
+    }
 
-    // Jump Input Execution
     const executeJump = () => {
       const input = document.getElementById('jump-q-input');
       const val = parseInt(input.value, 10);
@@ -442,7 +466,7 @@ class GameApp {
     document.getElementById('screen-level-select').classList.remove('hidden');
     this.checkResumeSession();
     this.updateStageButtonState();
-    this.renderLevelCards('all');
+    this.renderLevelCards(this.currentFilter);
   }
 
   spawnNextWave() {
@@ -616,13 +640,11 @@ class GameApp {
 
     if (this.state !== this.STATE_PLAYING) return;
 
-    // Mission Clause Banner
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 16px -apple-system, monospace';
     ctx.fillText(this.currentQuestion.sentence, this.width / 2, 88);
 
-    // Drones
     this.drones.forEach(d => {
       ctx.fillStyle = 'rgba(17, 24, 39, 0.9)';
       ctx.strokeStyle = '#38bdf8';
@@ -641,13 +663,11 @@ class GameApp {
       ctx.fillText(d.text, d.x, d.y + 5);
     });
 
-    // Lasers
     ctx.fillStyle = '#38bdf8';
     this.lasers.forEach(l => {
       ctx.fillRect(l.x - 2, l.y, 4, 14);
     });
 
-    // Defender Ship
     ctx.fillStyle = '#38bdf8';
     ctx.beginPath();
     ctx.moveTo(this.ship.x, this.ship.y - 18);
@@ -657,7 +677,6 @@ class GameApp {
     ctx.closePath();
     ctx.fill();
 
-    // Diagnostics Toast
     if (this.toast.timer > 0) {
       ctx.fillStyle = this.toast.color;
       ctx.font = 'bold 13px -apple-system, monospace';
